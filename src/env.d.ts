@@ -121,6 +121,10 @@ declare namespace Cloudflare {
     OPENROUTER_API_KEY?: string;
     // Optional OpenRouter model slug override (defaults in openrouter.ts).
     OPENROUTER_MODEL?: string;
+    // PrestaShop Webservice (read-only key) the Shopping Prices catalogue
+    // syncs from, for the project whose domain matches PRESTASHOP_URL.
+    PRESTASHOP_URL?: string;
+    PRESTASHOP_API_KEY?: string;
   }
 }
 

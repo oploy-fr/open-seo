@@ -28,8 +28,6 @@ export async function runScheduledShopping() {
         nextShoppingCheckAt(settings.scheduleInterval, now),
       );
       if (!claimed) continue;
-      const products = await repo.listProducts(project.id);
-      if (!products.length) continue;
       await ShoppingService.startCheck(project, {
         organizationId: project.organizationId,
         userId: "system",

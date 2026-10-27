@@ -52,3 +52,8 @@ export const shoppingProductUpdateSchema = shoppingProjectSchema.extend({
   archived: z.boolean().optional(),
   searchQuery: z.string().trim().max(300).nullish(),
 });
+
+export const shoppingCategoryExcludedSchema = shoppingProjectSchema.extend({
+  categoryId: z.uuid(),
+  excluded: z.boolean(),
+});

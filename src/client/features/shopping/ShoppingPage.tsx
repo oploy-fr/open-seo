@@ -1,7 +1,13 @@
 import { useMemo, useState } from "react";
 import { sortBy } from "remeda";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ExternalLink, Play, ShoppingBag, Upload } from "lucide-react";
+import {
+  ExternalLink,
+  FolderTree,
+  Play,
+  ShoppingBag,
+  Upload,
+} from "lucide-react";
 import { ConfirmDialog } from "@/client/components/ConfirmDialog";
 import { EmptyState } from "@/client/components/EmptyState";
 import { QueryError, QueryState } from "@/client/components/QueryState";
@@ -29,6 +35,8 @@ import {
 } from "@/shared/shopping";
 import { formatGap, formatPrice, gapClassName } from "./format";
 import { ShoppingBrandTable } from "./ShoppingBrandTable";
+import { ShoppingCategoriesDialog } from "./ShoppingCategoriesDialog";
+import { ShoppingStat as Stat, ShoppingSyncButton } from "./ShoppingSyncButton";
 import { ShoppingImportDialog } from "./ShoppingImportDialog";
 import { ShoppingOffersDialog } from "./ShoppingOffersDialog";
 
@@ -56,23 +64,16 @@ export function ShoppingPage({ projectId }: { projectId: string }) {
   );
 }
 
-function Stat({
-  label,
-  value,
-  tone,
-}: {
-  label: string;
-  value: string;
-  tone?: string;
-}) {
-  return (
-    <div className="min-w-28 rounded-lg border border-border px-3 py-2">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className={`text-lg font-semibold tabular-nums ${tone ?? ""}`}>
-        {value}
-      </p>
-    </div>
+function filterRows(rows: Row[], filter: Filter) {
+  const filtered = rows.filter((row) =>
+    filter === "all"
+      ? true
+      : filter === "missing"
+        ? !row.market
+        : row.market?.position === filter,
   );
+  // Biggest gaps first; products without market data last.
+  return sortBy(filtered, [(row) => row.market?.gapPct ?? -Infinity, "desc"]);
 }
 
 function ShoppingContent({
@@ -83,7 +84,10 @@ function ShoppingContent({
   data: Overview;
 }) {
   const queryClient = useQueryClient();
+  const { overall, rows, brands, competitors, activeCheck, shownCheck } = data;
+  const { catalog } = data;
   const [importing, setImporting] = useState(false);
+  const [editingCategories, setEditingCategories] = useState(false);
   const [confirm, setConfirm] = useState<string | null>(null);
   const [offersFor, setOffersFor] = useState<Row | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
@@ -103,32 +107,29 @@ function ShoppingContent({
     onSuccess: refresh,
   });
 
-  const { overall, rows, brands, competitors, activeCheck, shownCheck } = data;
-  const visible = useMemo(() => {
-    const filtered = rows.filter((row) =>
-      filter === "all"
-        ? true
-        : filter === "missing"
-          ? !row.market
-          : row.market?.position === filter,
-    );
-    // Biggest gaps first; products without market data last.
-    return sortBy(filtered, [(row) => row.market?.gapPct ?? -Infinity, "desc"]);
-  }, [rows, filter]);
+  const visible = useMemo(() => filterRows(rows, filter), [rows, filter]);
 
-  if (!rows.length)
+  if (!rows.length && !catalog.excludedProducts)
     return (
       <>
         <EmptyState
           variant="card"
           icon={ShoppingBag}
           title="No products yet"
-          description="Import your catalogue (CSV export of your shop) to compare your prices with Google Shopping."
+          description={
+            catalog.shop
+              ? `Sync your catalogue from ${catalog.shop} to compare your prices with Google Shopping.`
+              : "Import your catalogue (CSV export of your shop) to compare your prices with Google Shopping."
+          }
           action={
-            <Button size="sm" onClick={() => setImporting(true)}>
-              <Upload data-icon="inline-start" />
-              Import products
-            </Button>
+            catalog.shop ? (
+              <ShoppingSyncButton projectId={projectId} primary />
+            ) : (
+              <Button size="sm" onClick={() => setImporting(true)}>
+                <Upload data-icon="inline-start" />
+                Import products
+              </Button>
+            )
           }
         />
         {importing && (
@@ -147,7 +148,12 @@ function ShoppingContent({
           <div className="space-y-1">
             <h2 className="text-lg font-semibold">Price position</h2>
             <p className="text-xs text-muted-foreground">
-              {rows.length} products tracked ·{" "}
+              {rows.length} products tracked
+              {catalog.excludedProducts > 0 &&
+                ` (${catalog.excludedProducts} in excluded categories)`}
+              {catalog.syncedAt &&
+                ` · synced from ${catalog.shop} ${new Date(catalog.syncedAt).toLocaleString()}`}
+              {" · "}
               {shownCheck
                 ? `results from ${new Date(shownCheck.createdAt).toLocaleDateString()}`
                 : "no check yet"}
@@ -162,14 +168,28 @@ function ShoppingContent({
               onChange={(value) => schedule.mutate(value)}
               showLabels
             />
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setImporting(true)}
-            >
-              <Upload data-icon="inline-start" />
-              Import
-            </Button>
+            {data.categories.length > 0 && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setEditingCategories(true)}
+              >
+                <FolderTree data-icon="inline-start" />
+                Categories
+              </Button>
+            )}
+            {catalog.shop ? (
+              <ShoppingSyncButton projectId={projectId} />
+            ) : (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setImporting(true)}
+              >
+                <Upload data-icon="inline-start" />
+                Import
+              </Button>
+            )}
             <Button
               size="sm"
               disabled={Boolean(activeCheck)}
@@ -334,6 +354,13 @@ function ShoppingContent({
         <ShoppingImportDialog
           projectId={projectId}
           onClose={() => setImporting(false)}
+        />
+      )}
+      {editingCategories && (
+        <ShoppingCategoriesDialog
+          projectId={projectId}
+          categories={data.categories}
+          onClose={() => setEditingCategories(false)}
         />
       )}
       {offersFor?.lookupId && (
