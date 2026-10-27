@@ -146,6 +146,7 @@ export const {
   localRankBusinesses,
   localRankResults,
   shoppingProducts,
+  shoppingCategories,
   shoppingSettings,
   shoppingChecks,
   shoppingLookups,

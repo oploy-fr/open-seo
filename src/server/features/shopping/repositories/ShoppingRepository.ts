@@ -13,6 +13,7 @@ import { DB_BATCH_SIZE, runBatch } from "@/db/runBatch";
 import {
   projectCompetitors,
   projects,
+  shoppingCategories,
   shoppingChecks,
   shoppingLookups,
   shoppingOffers,
@@ -22,9 +23,11 @@ import {
 import { ShoppingStatus } from "@/shared/shopping";
 
 export type ShoppingProductRow = typeof shoppingProducts.$inferSelect;
+export type ShoppingCategoryRow = typeof shoppingCategories.$inferSelect;
 export type ShoppingCheckRow = typeof shoppingChecks.$inferSelect;
 type ProductInsert = typeof shoppingProducts.$inferInsert;
 type OfferInsert = typeof shoppingOffers.$inferInsert;
+type CategoryInsert = typeof shoppingCategories.$inferInsert;
 
 const ACTIVE = [ShoppingStatus.Queued, ShoppingStatus.Running];
 
@@ -109,6 +112,52 @@ async function updateProductQuery(
       and(
         eq(shoppingProducts.projectId, projectId),
         eq(shoppingProducts.id, productId),
+      ),
+    );
+}
+
+async function listCategories(projectId: string) {
+  return db
+    .select()
+    .from(shoppingCategories)
+    .where(eq(shoppingCategories.projectId, projectId));
+}
+
+/** Adds new categories and renames or moves known ones; keeps exclusions. */
+async function saveCategories(rows: CategoryInsert[]) {
+  for (const group of chunks(rows, 12))
+    await runBatch((tx) =>
+      group.map((row) =>
+        tx
+          .insert(shoppingCategories)
+          .values(row)
+          .onConflictDoUpdate({
+            target: [
+              shoppingCategories.projectId,
+              shoppingCategories.externalId,
+            ],
+            set: {
+              name: row.name,
+              parentExternalId: row.parentExternalId,
+              updatedAt: row.updatedAt,
+            },
+          }),
+      ),
+    );
+}
+
+async function setCategoryExcluded(
+  projectId: string,
+  categoryId: string,
+  excluded: boolean,
+) {
+  await db
+    .update(shoppingCategories)
+    .set({ excluded, updatedAt: new Date().toISOString() })
+    .where(
+      and(
+        eq(shoppingCategories.projectId, projectId),
+        eq(shoppingCategories.id, categoryId),
       ),
     );
 }
@@ -351,6 +400,9 @@ export const ShoppingRepository = {
   saveProducts,
   setProductArchived,
   updateProductQuery,
+  listCategories,
+  saveCategories,
+  setCategoryExcluded,
   getSettings,
   saveSettings,
   claimDueSettings,

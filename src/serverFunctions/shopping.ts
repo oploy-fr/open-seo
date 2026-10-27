@@ -3,6 +3,7 @@ import { ShoppingService } from "@/server/features/shopping/services/ShoppingSer
 import { requireProjectContext } from "./middleware";
 import {
   importShoppingProductsSchema,
+  shoppingCategoryExcludedSchema,
   shoppingLookupSchema,
   shoppingProductUpdateSchema,
   shoppingProjectSchema,
@@ -55,3 +56,17 @@ export const updateShoppingProduct = createServerFn({ method: "POST" })
         data.searchQuery,
       );
   });
+export const syncShoppingCatalog = createServerFn({ method: "POST" })
+  .middleware(requireProjectContext)
+  .validator(shoppingProjectSchema)
+  .handler(({ context }) => ShoppingService.syncCatalog(context.project));
+export const setShoppingCategoryExcluded = createServerFn({ method: "POST" })
+  .middleware(requireProjectContext)
+  .validator(shoppingCategoryExcludedSchema)
+  .handler(({ data, context }) =>
+    ShoppingService.setCategoryExcluded(
+      context.projectId,
+      data.categoryId,
+      data.excluded,
+    ),
+  );

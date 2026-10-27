@@ -1,5 +1,4 @@
 import { groupBy, groupByProp, sortBy } from "remeda";
-import type { z } from "zod";
 import type { BillingCustomerContext } from "@/server/billing/subscription";
 import {
   getOrCreateOrganizationCustomer,
@@ -11,7 +10,6 @@ import { AppError } from "@/server/lib/errors";
 import {
   isSameSeller,
   isShoppingCheckActive,
-  MAX_SHOPPING_PRODUCTS,
   median,
   nextShoppingCheckAt,
   SHOPPING_TASK_COST_USD,
@@ -21,7 +19,6 @@ import {
   type ShoppingPosition,
   type ShoppingScheduleInterval,
 } from "@/shared/shopping";
-import type { importShoppingProductsSchema } from "@/types/schemas/shopping";
 import {
   ShoppingRepository as repo,
   type ShoppingCheckRow,
@@ -32,6 +29,13 @@ import {
   shoppingQuery,
   submitShoppingCheck,
 } from "./shoppingCollection";
+import {
+  catalogSource,
+  hostOf,
+  importProducts,
+  listTrackedProducts,
+  syncCatalog,
+} from "./shoppingCatalog";
 
 type ProjectLike = {
   id: string;
@@ -40,59 +44,6 @@ type ProjectLike = {
   locationCode: number;
   languageCode: string;
 };
-
-async function importProducts(
-  projectId: string,
-  input: z.infer<typeof importShoppingProductsSchema>,
-) {
-  const rows = new Map(input.products.map((row) => [row.sku, row]));
-  if (rows.size > MAX_SHOPPING_PRODUCTS)
-    throw new AppError(
-      "VALIDATION_ERROR",
-      `Import at most ${MAX_SHOPPING_PRODUCTS} products.`,
-    );
-  const existing = new Map(
-    (await repo.listAllProducts(projectId)).map((row) => [row.sku, row]),
-  );
-  const now = new Date().toISOString();
-  const inserts = [];
-  const updates = [];
-  for (const row of rows.values()) {
-    const values = {
-      title: row.title,
-      brand: row.brand ?? null,
-      gtin: row.gtin ?? null,
-      category: row.category ?? null,
-      price: row.price,
-      currency: row.currency,
-      url: row.url ?? null,
-      archivedAt: null,
-      updatedAt: now,
-    };
-    const known = existing.get(row.sku);
-    if (known) updates.push({ id: known.id, values });
-    else
-      inserts.push({
-        id: crypto.randomUUID(),
-        projectId,
-        sku: row.sku,
-        searchQuery: null,
-        createdAt: now,
-        ...values,
-      });
-  }
-  const archiveIds = input.archiveMissing
-    ? [...existing.values()]
-        .filter((row) => !rows.has(row.sku) && !row.archivedAt)
-        .map((row) => row.id)
-    : [];
-  await repo.saveProducts(inserts, updates, archiveIds, now);
-  return {
-    added: inserts.length,
-    updated: updates.length,
-    archived: archiveIds.length,
-  };
-}
 
 function checkCostCredits(products: number) {
   return creditsForProviderUsd(products * SHOPPING_TASK_COST_USD);
@@ -120,11 +71,19 @@ async function startCheck(
   if (existing) return existing;
   const active = await repo.getActiveCheck(project.id);
   if (active) return active;
-  const products = await repo.listProducts(project.id);
+  if (await catalogSource(project))
+    await syncCatalog(project).catch((error: unknown) => {
+      // Prices are checked against the last synced catalogue.
+      console.warn(
+        `[shopping] catalogue sync for ${project.id} failed:`,
+        error,
+      );
+    });
+  const products = (await listTrackedProducts(project.id)).tracked;
   if (!products.length)
     throw new AppError(
       "VALIDATION_ERROR",
-      "Import your products before checking prices.",
+      "No product to check: import or sync your catalogue, or include a category.",
     );
   if (await isHostedServerAuthMode()) {
     const { id } = await getOrCreateOrganizationCustomer(customer);
@@ -219,8 +178,8 @@ async function buildComparison(
   project: ProjectLike,
   check: ShoppingCheckRow | null,
 ) {
-  const [products, competitors, lookups] = await Promise.all([
-    repo.listProducts(project.id),
+  const [{ tracked: products }, competitors, lookups] = await Promise.all([
+    listTrackedProducts(project.id),
     repo.listCompetitors(project.id),
     check ? repo.getLookups(check.id) : Promise.resolve([]),
   ]);
@@ -297,9 +256,11 @@ async function getOverview(project: ProjectLike) {
     await collectShoppingCheck(active);
     active = await repo.getActiveCheck(project.id);
   }
-  const [settings, checks] = await Promise.all([
+  const [settings, checks, catalog, source] = await Promise.all([
     repo.getSettings(project.id),
     repo.listChecks(project.id),
+    listTrackedProducts(project.id),
+    catalogSource(project),
   ]);
   const shown =
     active ??
@@ -328,6 +289,29 @@ async function getOverview(project: ProjectLike) {
       : null,
     shownCheck: shown,
     checks,
+    catalog: {
+      shop: source ? hostOf(source.url) : null,
+      syncedAt: source
+        ? (catalog.products.reduce<string | null>(
+            (latest, product) =>
+              !latest || product.updatedAt > latest
+                ? product.updatedAt
+                : latest,
+            null,
+          ) ?? null)
+        : null,
+      excludedProducts: catalog.products.length - catalog.tracked.length,
+    },
+    categories: catalog.categories.map((category) => ({
+      id: category.id,
+      externalId: category.externalId,
+      parentExternalId: category.parentExternalId,
+      name: category.name,
+      excluded: category.excluded,
+      products: catalog.products.filter(
+        (product) => product.categoryExternalId === category.externalId,
+      ).length,
+    })),
     ...comparison,
   };
 }
@@ -340,6 +324,8 @@ async function getOffers(projectId: string, lookupId: string) {
 
 export const ShoppingService = {
   importProducts,
+  syncCatalog,
+  setCategoryExcluded: repo.setCategoryExcluded,
   setSchedule,
   startCheck,
   getOverview,

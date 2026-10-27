@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  boolean,
   doublePrecision,
   index,
   integer,
@@ -32,6 +33,8 @@ export const shoppingProducts = pgTable(
     brand: text("brand"),
     gtin: text("gtin"),
     category: text("category"),
+    // The shop's category id (or the category name for a CSV import).
+    categoryExternalId: text("category_external_id"),
     price: doublePrecision("price").notNull(),
     currency: text("currency").notNull(),
     url: text("url"),
@@ -43,6 +46,29 @@ export const shoppingProducts = pgTable(
   },
   (t) => [
     uniqueIndex("shopping_products_project_sku_idx").on(t.projectId, t.sku),
+  ],
+);
+
+// The shop's category tree. Excluding a category excludes its subtree from
+// price checks.
+export const shoppingCategories = pgTable(
+  "shopping_categories",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    externalId: text("external_id").notNull(),
+    parentExternalId: text("parent_external_id"),
+    name: text("name").notNull(),
+    excluded: boolean("excluded").notNull().default(false),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    uniqueIndex("shopping_categories_project_external_idx").on(
+      t.projectId,
+      t.externalId,
+    ),
   ],
 );
 

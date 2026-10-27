@@ -32,7 +32,7 @@ export type ShoppingScheduleInterval =
 export const SHOPPING_DEPTH = 40;
 /** DataForSEO standard-queue price per Google Shopping SERP (≤ 40 results). */
 export const SHOPPING_TASK_COST_USD = 0.001;
-export const MAX_SHOPPING_PRODUCTS = 1000;
+export const MAX_SHOPPING_PRODUCTS = 5000;
 
 /** Within ±5 % of the market median counts as aligned. */
 const SHOPPING_ALIGNED_GAP_PCT = 5;
