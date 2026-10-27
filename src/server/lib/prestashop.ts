@@ -36,7 +36,14 @@ export async function getPrestashopConfig() {
   const url = await getOptionalEnvValue("PRESTASHOP_URL");
   const apiKey = await getOptionalEnvValue("PRESTASHOP_API_KEY");
   if (!url || !apiKey) return null;
-  return { url: url.replace(/\/+$/, ""), apiKey };
+  // A self-hosted OpenSEO next to the shop can read the Webservice over the
+  // local network when a CDN challenges requests from the server itself.
+  const apiUrl = (await getOptionalEnvValue("PRESTASHOP_API_URL")) ?? url;
+  return {
+    url: url.replace(/\/+$/, ""),
+    apiUrl: apiUrl.replace(/\/+$/, ""),
+    apiKey,
+  };
 }
 
 type PrestashopConfig = NonNullable<
@@ -53,13 +60,15 @@ async function readAll<T>(
   const rows: T[] = [];
   for (let page = 0; page < MAX_PAGES; page++) {
     const search = new URLSearchParams({
+      url: resource,
       ...params,
       output_format: "JSON",
       sort: "[id_ASC]",
       limit: `${page * PAGE_SIZE},${PAGE_SIZE}`,
     });
     const response = await fetch(
-      `${config.url}/api/${resource}?${search.toString()}`,
+      // The dispatcher works whether or not the shop rewrites /api.
+      `${config.apiUrl}/webservice/dispatcher.php?${search.toString()}`,
       {
         headers: {
           Authorization: `Basic ${btoa(`${config.apiKey}:`)}`,

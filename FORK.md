@@ -10,7 +10,9 @@ product prices with the offers Google Shopping lists for the same products.
   names, see `src/shared/shopping-import.ts`).
 - Direct catalogue sync from a PrestaShop shop through its Webservice
   (`src/server/lib/prestashop.ts`): set `PRESTASHOP_URL` and
-  `PRESTASHOP_API_KEY` (read-only key, GET on products and categories). The
+  `PRESTASHOP_API_KEY` (read-only key, GET on products and categories), and
+  optionally `PRESTASHOP_API_URL` to read the Webservice over the local network
+  (through a proxy that sends the shop's Host header). The
   project whose domain matches the shop syncs before each check and with
   "Sync catalogue".
 - Category exclusion: an excluded category leaves its whole subtree out of the

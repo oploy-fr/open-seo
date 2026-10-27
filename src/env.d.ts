@@ -125,6 +125,8 @@ declare namespace Cloudflare {
     // syncs from, for the project whose domain matches PRESTASHOP_URL.
     PRESTASHOP_URL?: string;
     PRESTASHOP_API_KEY?: string;
+    // Optional base the Webservice is read from (e.g. the shop's container).
+    PRESTASHOP_API_URL?: string;
   }
 }
 

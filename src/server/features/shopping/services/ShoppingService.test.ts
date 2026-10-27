@@ -223,7 +223,7 @@ describe("ShoppingService", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string) => {
-        const resource = new URL(url).pathname.split("/").pop() ?? "";
+        const resource = new URL(url).searchParams.get("url") ?? "";
         return Response.json(pages[resource]);
       }),
     );
