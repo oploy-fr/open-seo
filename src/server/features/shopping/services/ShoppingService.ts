@@ -10,6 +10,7 @@ import { AppError } from "@/server/lib/errors";
 import {
   isSameSeller,
   isShoppingCheckActive,
+  matchShoppingOffer,
   median,
   nextShoppingCheckAt,
   SHOPPING_TASK_COST_USD,
@@ -124,6 +125,20 @@ async function startCheck(
   return (await repo.getCheck(project.id, check.id)) ?? check;
 }
 
+/**
+ * Matches stored offers again with the current rules, so better matching
+ * applies to past checks without buying the searches again.
+ */
+function rematchOffers<T extends { title: string }>(
+  product: { title: string; brand: string | null },
+  offers: T[],
+) {
+  return offers.map((offer) => {
+    const { match, score } = matchShoppingOffer(product, offer.title);
+    return { ...offer, match, matchScore: score };
+  });
+}
+
 type CompetitorPrice = { domain: string; name: string | null; price: number };
 
 type ShoppingProductComparison = {
@@ -194,7 +209,9 @@ async function buildComparison(
 
   const rows = products.map((product: ShoppingProductRow) => {
     const lookup = lookupByProduct.get(product.id);
-    const productOffers = lookup ? (offersByLookup[lookup.id] ?? []) : [];
+    const productOffers = lookup
+      ? rematchOffers(product, offersByLookup[lookup.id] ?? [])
+      : [];
     const isOwn = (offer: (typeof productOffers)[number]) =>
       own ? isSameSeller(offer, own) : false;
     const usable = (match: ShoppingOfferMatch) =>
@@ -317,9 +334,10 @@ async function getOverview(project: ProjectLike) {
 }
 
 async function getOffers(projectId: string, lookupId: string) {
-  if (!(await repo.getLookupInProject(projectId, lookupId)))
+  const lookup = await repo.getLookupInProject(projectId, lookupId);
+  if (!lookup)
     throw new AppError("NOT_FOUND", "These results are no longer available.");
-  return repo.getOffers([lookupId]);
+  return rematchOffers(lookup.product, await repo.getOffers([lookupId]));
 }
 
 export const ShoppingService = {

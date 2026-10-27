@@ -321,11 +321,15 @@ async function getLookupInProject(projectId: string, lookupId: string) {
   return (
     (
       await db
-        .select({ id: shoppingLookups.id })
+        .select({ id: shoppingLookups.id, product: shoppingProducts })
         .from(shoppingLookups)
         .innerJoin(
           shoppingChecks,
           eq(shoppingChecks.id, shoppingLookups.checkId),
+        )
+        .innerJoin(
+          shoppingProducts,
+          eq(shoppingProducts.id, shoppingLookups.productId),
         )
         .where(
           and(

@@ -69,7 +69,6 @@ const STOPWORDS = new Set([
   "avec",
   "un",
   "une",
-  "a",
   "au",
   "aux",
   "the",
@@ -77,9 +76,6 @@ const STOPWORDS = new Set([
   "for",
   "with",
   "of",
-  "x",
-  "pack",
-  "lot",
   "eau",
   "mer",
   "aquarium",
@@ -91,6 +87,56 @@ const STOPWORDS = new Set([
   "new",
   "version",
 ]);
+
+// Single letters that are elisions or separators, not variant names.
+const NON_VARIANT_LETTERS = new Set([
+  "a",
+  "c",
+  "d",
+  "j",
+  "l",
+  "m",
+  "n",
+  "s",
+  "x",
+]);
+
+// Words that make an offer a part or an accessory of the product, unless our
+// own title has them too.
+const ACCESSORY_WORDS = new Set([
+  "support",
+  "stand",
+  "rotor",
+  "helice",
+  "axe",
+  "cartouche",
+  "recharge",
+  "rechange",
+  "remplacement",
+  "replacement",
+  "spare",
+  "piece",
+  "pieces",
+  "adaptateur",
+  "adapter",
+  "robinet",
+  "deflecteur",
+  "fixation",
+  "bracket",
+  "mount",
+  "cable",
+  "joint",
+  "ventouse",
+  "couvercle",
+  "housse",
+  "ersatz",
+  "ersatzteil",
+  "zubehor",
+]);
+
+// "lot de 12", "x24", "24 x", "pack de 6": several units in one offer.
+const MULTIPACK =
+  /\b(lot|pack|set) de \d+\b|\bx ?\d+\b|\b\d+ ?x\b|\b\d+ ?(pz|pcs|pieces)\b/;
 
 // Base unit and factor for the sizes that tell product variants apart.
 const UNITS: Record<string, [string, number]> = {
@@ -109,28 +155,32 @@ const UNITS: Record<string, [string, number]> = {
   mm: ["mm", 1],
   cm: ["mm", 10],
   m: ["mm", 1000],
+  metre: ["mm", 1000],
+  metres: ["mm", 1000],
   lh: ["lh", 1],
-  pcs: ["pcs", 1],
-  pieces: ["pcs", 1],
+  micron: ["um", 1],
+  microns: ["um", 1],
+  um: ["um", 1],
   tests: ["tests", 1],
 };
+const QUANTITY = /(\d+(?:\.\d+)?)\s?([a-z]+)\b/g;
 
 function normalizeText(value: string) {
   return value
     .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
+    .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .replace(/l\/h/g, "lh")
     .replace(/(\d),(\d)/g, "$1.$2")
     .replace(/[^a-z0-9.+]+/g, " ")
+    .replace(/(^|\s)\.+|\.+(?=\s|$)/g, " ")
     .trim();
 }
 
 /** Sizes in a title, as "unit:value" in base units (500 ml and 0,5 L agree). */
-function extractQuantities(value: string) {
+function extractQuantities(normalized: string) {
   const quantities = new Set<string>();
-  const pattern = /(\d+(?:\.\d+)?)\s?([a-z]+)\b/g;
-  for (const [, amount, unit] of normalizeText(value).matchAll(pattern)) {
+  for (const [, amount, unit] of normalized.matchAll(QUANTITY)) {
     const known = UNITS[unit];
     if (!known) continue;
     const base = Math.round(Number(amount) * known[1] * 100) / 100;
@@ -139,58 +189,87 @@ function extractQuantities(value: string) {
   return quantities;
 }
 
-function significantTokens(value: string, brand: string | null) {
+/** "1.0" and "1" are the same model number; "phosphates" is "phosphate". */
+function canonicalToken(token: string) {
+  if (/^\d+(\.\d+)?$/.test(token)) return String(Number(token));
+  return token.length > 3 && token.endsWith("s") ? token.slice(0, -1) : token;
+}
+
+/**
+ * A title's words without its sizes: `required` holds the model numbers and
+ * variant letters that must appear in the offer (Syncra 1.0, Trace V, 4K,
+ * 9004), `words` the others, compared by share.
+ */
+function titleTokens(normalized: string, brand: string | null) {
   const brandTokens = new Set(brand ? normalizeText(brand).split(" ") : []);
-  return new Set(
-    normalizeText(value)
-      .split(" ")
-      .filter(
-        (token) =>
-          token.length > 1 &&
-          !STOPWORDS.has(token) &&
-          !brandTokens.has(token) &&
-          // Sizes are compared separately, with their units.
-          !/^\d+(\.\d+)?[a-z]*$/.test(token),
-      ),
+  const withoutSizes = normalized.replace(
+    QUANTITY,
+    (whole, _n, unit: string) => (UNITS[unit] ? " " : whole),
   );
+  const required = new Set<string>();
+  const words = new Set<string>();
+  for (const raw of withoutSizes.split(" ")) {
+    const token = canonicalToken(raw);
+    if (!token || brandTokens.has(token) || STOPWORDS.has(token)) continue;
+    if (/\d/.test(token)) required.add(token);
+    else if (token.length === 1) {
+      if (!NON_VARIANT_LETTERS.has(token)) required.add(token);
+    } else words.add(token);
+  }
+  return { required, words, all: new Set([...required, ...words]) };
 }
 
 export function matchShoppingOffer(
   product: { title: string; brand: string | null },
   offerTitle: string,
 ): { match: ShoppingOfferMatch; score: number } {
-  const offer = normalizeText(offerTitle);
+  const other = { match: ShoppingOfferMatch.Other, score: 0 };
+  const ourText = normalizeText(product.title);
+  const offerText = normalizeText(offerTitle);
   if (product.brand) {
     const brand = normalizeText(product.brand);
-    if (brand && !` ${offer} `.includes(` ${brand} `))
-      return { match: ShoppingOfferMatch.Other, score: 0 };
+    if (brand && !` ${offerText} `.includes(` ${brand} `)) return other;
   }
 
-  const ours = extractQuantities(product.title);
-  const theirs = extractQuantities(offerTitle);
+  const ours = extractQuantities(ourText);
+  const theirs = extractQuantities(offerText);
+  const ourTokens = titleTokens(ourText, product.brand);
+  const offerTokens = titleTokens(offerText, product.brand);
   for (const quantity of ours) {
     if (theirs.has(quantity)) continue;
-    // Our size is missing; a different size of the same unit is another
-    // variant, an offer that names no size at all may still be ours.
+    // Our size is missing: a different size of the same unit, or a bare
+    // number of its own ("Voyager Nano 2000" for our 1000 l/h), is another
+    // variant. An offer that names no size at all may still be ours.
     const unit = quantity.split(":")[0];
-    if ([...theirs].some((other) => other.startsWith(`${unit}:`)))
-      return { match: ShoppingOfferMatch.Other, score: 0 };
+    if ([...theirs].some((value) => value.startsWith(`${unit}:`))) return other;
+    for (const token of offerTokens.required)
+      if (/^\d/.test(token) && !ourTokens.all.has(token)) return other;
   }
 
-  const ourTokens = significantTokens(product.title, product.brand);
-  const offerTokens = significantTokens(offerTitle, product.brand);
-  if (ourTokens.size === 0)
+  // Another model number or variant letter is another product.
+  for (const token of ourTokens.required)
+    if (!offerTokens.all.has(token)) return other;
+  // A part, an accessory or a multipack of the product is not the product.
+  for (const token of offerTokens.words)
+    if (ACCESSORY_WORDS.has(token) && !ourTokens.words.has(token)) return other;
+  if (MULTIPACK.test(offerText) && !MULTIPACK.test(ourText)) return other;
+
+  // A brandless title of one generic word ("pack pvc") cannot be matched.
+  if (!product.brand && ourTokens.all.size < 2) return other;
+  if (ourTokens.words.size === 0)
     return { match: ShoppingOfferMatch.Probable, score: 0.5 };
   let shared = 0;
-  for (const token of ourTokens) if (offerTokens.has(token)) shared++;
+  for (const token of ourTokens.words)
+    if (offerTokens.words.has(token)) shared++;
   // Share of our words found in the offer: sellers often add words of
   // their own, so the offer's extra words weigh less than our missing ones.
-  const score = shared / ourTokens.size;
+  const score = shared / ourTokens.words.size;
+  if (score < 0.75) return { match: ShoppingOfferMatch.Other, score };
   const sizesAgree = [...ours].every((quantity) => theirs.has(quantity));
-  if (score >= 0.75 && sizesAgree)
-    return { match: ShoppingOfferMatch.Match, score };
-  if (score >= 0.5) return { match: ShoppingOfferMatch.Probable, score };
-  return { match: ShoppingOfferMatch.Other, score };
+  return {
+    match: sizesAgree ? ShoppingOfferMatch.Match : ShoppingOfferMatch.Probable,
+    score,
+  };
 }
 
 // ---------------------------------------------------------------------------

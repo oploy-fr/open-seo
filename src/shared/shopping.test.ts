@@ -26,6 +26,46 @@ describe("matchShoppingOffer", () => {
     ).toBe(ShoppingOfferMatch.Other);
   });
 
+  it("rejects other models, variants, parts and multipacks", () => {
+    const cases: [string | null, string, string][] = [
+      ["SICCE", "SICCE Syncra 1.0", "Sicce Syncra ADV 5.5"],
+      [
+        "MAXSPECT",
+        "MAXSPECT Gyre 330 Cloud Edition",
+        "MAXSPECT Gyre 350 Cloud Edition",
+      ],
+      [
+        "FAUNA MARIN",
+        "FAUNA MARIN V trace 250ml",
+        "Fauna Marin Elementals Trace F 250 ml",
+      ],
+      ["Salifert", "Salifert test Calcium", "Salifert Test Magnésium"],
+      [
+        "SICCE",
+        "SICCE Syncra 3.5",
+        "SICCE Rotor complet pour pompes syncra 3.5/4.0/5.0",
+      ],
+      ["SICCE", "SICCE 1000 l/h Voyager nano", "Sicce Voyager Nano 2000"],
+      [null, "Colle PVC Gel 500ml", "Colle tuyaux pvc gel 500ml - lot de 12"],
+    ];
+    for (const [brand, title, offer] of cases)
+      expect(matchShoppingOffer({ title, brand }, offer).match).toBe(
+        ShoppingOfferMatch.Other,
+      );
+    expect(
+      matchShoppingOffer(
+        { title: "Hanna HI774 Phosphates ULR", brand: "Hanna" },
+        "HANNA HI774 Mini-photomètre Phosphate ULR",
+      ).match,
+    ).toBe(ShoppingOfferMatch.Match);
+    expect(
+      matchShoppingOffer(
+        { title: "SICCE Syncra 2.5", brand: "SICCE" },
+        "Pompe SICCE Syncra 2.5",
+      ).match,
+    ).toBe(ShoppingOfferMatch.Match);
+  });
+
   it("keeps an offer without size as probable", () => {
     expect(
       matchShoppingOffer(foundation, "Red Sea Reef Foundation A calcium").match,
