@@ -12,6 +12,12 @@ const localized = z
     typeof value === "string" ? value : (value[0]?.value ?? ""),
   );
 
+// Empty optional fields can come back as `false` instead of a string.
+const optionalText = z
+  .union([z.string(), z.literal(false)])
+  .nullish()
+  .transform((value) => value || null);
+
 const categorySchema = z.object({
   id: z.coerce.string(),
   id_parent: z.coerce.string(),
@@ -22,9 +28,9 @@ const categorySchema = z.object({
 const productSchema = z.object({
   id: z.coerce.string(),
   name: localized,
-  manufacturer_name: z.string().nullish(),
-  reference: z.string().nullish(),
-  ean13: z.string().nullish(),
+  manufacturer_name: optionalText,
+  reference: optionalText,
+  ean13: optionalText,
   id_category_default: z.coerce.string(),
   link_rewrite: localized,
   // The price with tax, asked for with price[price_ttc][use_tax]=1.

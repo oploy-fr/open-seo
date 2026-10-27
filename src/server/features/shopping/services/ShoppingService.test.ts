@@ -212,7 +212,7 @@ describe("ShoppingService", () => {
           {
             id: 40,
             name: name("Poisson clown"),
-            manufacturer_name: "",
+            manufacturer_name: false,
             id_category_default: "246",
             link_rewrite: name("poisson-clown"),
             price_ttc: "19.9",
