@@ -7,6 +7,7 @@ export type CreditFeature =
   | "ai_citations"
   | "ai_prompt_responses"
   | "local_seo"
+  | "shopping"
   | "agent";
 
 const CREDIT_FEATURE_LABELS: Record<string, string> = {
@@ -19,6 +20,7 @@ const CREDIT_FEATURE_LABELS: Record<string, string> = {
   ai_prompt_responses: "AI Prompt Responses",
   ai_search: "AI Search",
   local_seo: "Local SEO",
+  shopping: "Shopping Prices",
   // The onboarding chat is gone, but historical usage events still carry this
   // key — keep the label so old billing breakdowns don't render "Other".
   onboarding: "Onboarding",
@@ -56,6 +58,8 @@ export function mapDataforseoPathToCreditFeature(
       return "ai_prompt_responses";
     case "business_data":
       return "local_seo";
+    case "merchant":
+      return "shopping";
     case "keywords_data":
       return "keyword_research";
     case "dataforseo_labs": {

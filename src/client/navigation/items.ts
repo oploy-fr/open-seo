@@ -10,6 +10,7 @@ import {
   Link2,
   MessageSquare,
   Search,
+  ShoppingBag,
   TrendingUp,
 } from "lucide-react";
 import { linkOptions } from "@tanstack/react-router";
@@ -58,6 +59,11 @@ const projectNavItems = [
     to: "/p/$projectId/audit" as const,
     label: "Site Audit",
     icon: ClipboardCheck,
+  },
+  {
+    to: "/p/$projectId/shopping" as const,
+    label: "Shopping Prices",
+    icon: ShoppingBag,
   },
   {
     to: "/p/$projectId/ai-visibility" as const,
@@ -147,6 +153,7 @@ export function getProjectNavGroups(projectId: string) {
         byPath("/p/$projectId/rank-tracking"),
         byPath("/p/$projectId/saved"),
         byPath("/p/$projectId/audit"),
+        byPath("/p/$projectId/shopping"),
       ],
     },
     {

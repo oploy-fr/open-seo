@@ -322,6 +322,11 @@ export default {
         await runScheduledAiVisibility();
       }),
       withPgClient(() => sendFirstAuditEmails()),
+      withPgClient(async () => {
+        const { runScheduledShopping } =
+          await import("@/server/features/shopping/services/scheduledShopping");
+        await runScheduledShopping();
+      }),
     ]);
     for (const result of checks)
       if (result.status === "rejected") throw result.reason;

@@ -52,6 +52,7 @@ import {
   postRankCheckTasks,
 } from "@/server/lib/dataforseo/serp";
 import { fetchLighthouseResult } from "@/server/lib/dataforseo/lighthouse";
+import { postShoppingProductTasks } from "@/server/lib/dataforseo/merchant";
 import {
   fetchLlmAggregatedMetrics,
   fetchLlmCrossAggregatedMetrics,
@@ -251,6 +252,16 @@ export function createDataforseoClient(customer: BillingCustomerContext) {
         postLocalSerpTasks,
         dataforseoPricing.serp.localTaskPost,
         "local_seo",
+      ),
+    },
+    merchant: {
+      // DataForSEO bills task_post; collection is free and runs unmetered
+      // through fetchShoppingProductTaskResult (see index.ts).
+      shoppingTaskPost: meter(
+        customer,
+        postShoppingProductTasks,
+        dataforseoPricing.merchant.shoppingTaskPost,
+        "shopping",
       ),
     },
     labs: {
