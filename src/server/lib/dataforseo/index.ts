@@ -30,6 +30,7 @@ export {
   fetchLocalSerpTaskResult,
   fetchRankCheckTaskResult,
 } from "@/server/lib/dataforseo/serp";
+export { fetchShoppingProductTaskResult } from "@/server/lib/dataforseo/merchant";
 export {
   fetchAiTrackingTaskResult,
   type AiTrackingAnswer,

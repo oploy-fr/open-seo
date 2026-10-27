@@ -37,6 +37,8 @@ import {
   SERP_ANALYSIS_DEPTH,
 } from "@/server/lib/dataforseo/serp";
 import { fetchLighthouseResult } from "@/server/lib/dataforseo/lighthouse";
+import { postShoppingProductTasks } from "@/server/lib/dataforseo/merchant";
+import { SHOPPING_TASK_COST_USD } from "@/shared/shopping";
 import {
   fetchLlmAggregatedMetrics,
   fetchLlmCrossAggregatedMetrics,
@@ -285,6 +287,13 @@ export const dataforseoPricing = {
     ),
     serpCompetitors: priced(fetchSerpCompetitors, (input) =>
       labsUsd(input.limit),
+    ),
+  },
+  merchant: {
+    // One Google Shopping SERP (up to 40 results) per task.
+    shoppingTaskPost: priced(
+      postShoppingProductTasks,
+      (input) => input.tasks.length * SHOPPING_TASK_COST_USD,
     ),
   },
   lighthouse: {
